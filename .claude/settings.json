@@ -1,0 +1,43 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "hooks": {
+    "PreToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/guard-env.mjs\"",
+            "timeout": 10,
+            "statusMessage": "Kiểm tra file bảo vệ (.env)..."
+          }
+        ]
+      }
+    ],
+    "PostToolUse": [
+      {
+        "matcher": "Write|Edit",
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/format-fe.mjs\"",
+            "timeout": 30,
+            "statusMessage": "Đang chạy eslint --fix..."
+          }
+        ]
+      }
+    ],
+    "Stop": [
+      {
+        "hooks": [
+          {
+            "type": "command",
+            "command": "node \"$CLAUDE_PROJECT_DIR/.claude/hooks/review-knowledge.mjs\"",
+            "timeout": 15,
+            "statusMessage": "Kiểm tra rules/skills/endpoint/memory cần cập nhật..."
+          }
+        ]
+      }
+    ]
+  }
+}

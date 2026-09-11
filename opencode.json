@@ -1,0 +1,23 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "permission": {
+    "read": {
+      ".claude/**": "allow",
+      ".env*": "allow"
+    },
+    "edit": {
+      ".env*": "deny"
+    },
+    "bash": {
+      "bun start:dev": "allow",
+      "bun run build": "allow",
+      "bun run start": "allow",
+      "bun run lint": "allow",
+      "bun run test": "allow",
+      "bun run test:watch": "allow",
+      "bun run test:coverage": "allow",
+      "bunx eslint --fix *": "allow",
+      "bunx prettier --write *": "allow"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "tailwindCSS.experimental.configFile": "app/globals.css",
+  "tailwindCSS.includeLanguages": {
+    "typescript": "javascript",
+    "typescriptreact": "javascript"
+  },
+  "editor.quickSuggestions": {
+    "strings": "on"
+  },
+  "css.validate": false,
+  "claudeCodeChat.permissions.yoloMode": false
+}

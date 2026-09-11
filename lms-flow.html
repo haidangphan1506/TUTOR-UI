@@ -1,0 +1,1006 @@
+<!doctype html>
+<html lang="vi">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>LMS — Kiến trúc hệ thống</title>
+<script>
+  (function () {
+    const saved = localStorage.getItem('theme');
+    const dark = saved ? saved === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches;
+    document.documentElement.classList.toggle('dark', dark);
+  })();
+</script>
+<style>
+  :root {
+    --bg: #FAF9F5; --surface: #FFFFFF; --surface2: #F0EEE6;
+    --ink: #141413; --body: #3D3D3A; --muted: #87867F;
+    --line: #D1CFC5; --line-soft: #E6E3DA;
+    --clay: #D97757; --clay-soft: rgba(217,119,87,0.10);
+    --olive: #788C5D; --olive-soft: rgba(120,140,93,0.12);
+    --gold: #C9A45C; --gold-soft: rgba(201,164,92,0.12);
+    --blue: #5B7E96; --blue-soft: rgba(91,126,150,0.10);
+    --purple: #8B6BAE; --purple-soft: rgba(139,107,174,0.12);
+    --zone: rgba(20,20,19,0.025); --zone-line: #D1CFC5;
+    --serif: ui-serif, Georgia, "Times New Roman", serif;
+    --sans: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  }
+  html.dark {
+    --bg: #141413; --surface: #1F1F1D; --surface2: #2A2A28;
+    --ink: #FAF9F5; --body: #D1CFC5; --muted: #87867F;
+    --line: #3D3D3A; --line-soft: #2A2A28;
+    --clay: #E48A6E; --clay-soft: rgba(228,138,110,0.14);
+    --olive: #9DB07C; --olive-soft: rgba(157,176,124,0.16);
+    --gold: #D4B36F; --gold-soft: rgba(212,179,111,0.14);
+    --blue: #7FA3BC; --blue-soft: rgba(127,163,188,0.14);
+    --purple: #B897D4; --purple-soft: rgba(184,151,212,0.14);
+    --zone: rgba(250,249,245,0.03); --zone-line: #3D3D3A;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { height: 100%; }
+  body {
+    background: var(--bg); color: var(--body); font-family: var(--sans);
+    -webkit-font-smoothing: antialiased; display: flex; flex-direction: column; overflow: hidden;
+  }
+  .bar {
+    display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
+    padding: 12px 20px; border-bottom: 1px solid var(--line-soft); flex: none;
+  }
+  .bar h1 { font-family: var(--serif); font-weight: 500; font-size: 19px; color: var(--ink); letter-spacing: -0.01em; }
+  .bar .sub { font-family: var(--mono); font-size: 10.5px; color: var(--muted); letter-spacing: 0.06em; text-transform: uppercase; }
+  .spacer { flex: 1; }
+  .chips { display: flex; gap: 6px; flex-wrap: wrap; }
+  .chip {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.04em;
+    padding: 5px 11px; border: 1px solid var(--line); border-radius: 999px;
+    background: transparent; color: var(--muted); cursor: pointer; transition: all .15s ease;
+  }
+  .chip:hover { color: var(--ink); border-color: var(--muted); }
+  .chip.on { background: var(--ink); border-color: var(--ink); color: var(--bg); }
+  .chip.role.on { background: var(--olive); border-color: var(--olive); color: var(--bg); }
+  .toolbar-rows { display: flex; flex-direction: column; gap: 8px; flex: 1; }
+  .row-label { font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.1em; text-transform: uppercase; color: var(--muted); margin-right: 4px; }
+  #themeToggle {
+    font-family: var(--mono); font-size: 10.5px; text-transform: uppercase; letter-spacing: 0.08em;
+    padding: 5px 10px; border: 1px solid var(--line); border-radius: 6px;
+    background: transparent; color: var(--muted); cursor: pointer;
+  }
+  #themeToggle:hover { color: var(--ink); border-color: var(--muted); }
+
+  .stage { flex: 1; position: relative; min-height: 0; }
+  .stage svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
+
+  .zone rect { fill: var(--zone); stroke: var(--zone-line); stroke-width: 1; stroke-dasharray: 5 5; rx: 16; }
+  .zone .ztitle { font-family: var(--mono); font-size: 12px; letter-spacing: 0.1em; text-transform: uppercase; fill: var(--muted); }
+  .zone .zsub { font-family: var(--mono); font-size: 10.5px; fill: var(--muted); opacity: 0.75; }
+
+  .node { cursor: pointer; }
+  .node rect { fill: var(--surface); stroke: var(--line); stroke-width: 1.5; rx: 10; transition: stroke .15s ease, filter .15s ease; }
+  .node:hover rect { stroke: var(--muted); }
+  .node.sel rect { stroke: var(--clay) !important; stroke-width: 2; }
+  .node .t  { font-family: var(--sans); font-size: 14px; font-weight: 600; fill: var(--ink); pointer-events: none; }
+  .node .m  { font-family: var(--mono); font-size: 11px; fill: var(--muted); pointer-events: none; }
+  .node .k  { font-family: var(--mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; fill: var(--clay); pointer-events: none; }
+  .node.store rect { fill: var(--surface2); }
+  .node.do rect { fill: var(--olive-soft); stroke: var(--olive); }
+  .node.ext rect { stroke-dasharray: 6 3; }
+  .node.ai rect { fill: var(--purple-soft); stroke: var(--purple); }
+  .node.client rect { fill: var(--blue-soft); stroke: var(--blue); }
+
+  .edge { stroke: var(--muted); stroke-width: 1.6; fill: none; marker-end: url(#a-mut); transition: opacity .2s ease, stroke .2s ease; }
+  .edge.dash { stroke-dasharray: 5 4; }
+  .edge.thick { stroke-width: 2.5; }
+  .elbl { font-family: var(--mono); font-size: 10px; fill: var(--muted); transition: opacity .2s ease; }
+
+  .stage.flowing .edge { opacity: 0.13; }
+  .stage.flowing .elbl { opacity: 0.13; }
+  .stage.flowing .node { opacity: 0.30; }
+  .stage.flowing .zone { opacity: 0.45; }
+  .stage.flowing .edge.lit { opacity: 1; stroke: var(--clay); marker-end: url(#a-clay); stroke-dasharray: 7 5; animation: march 0.9s linear infinite; }
+  .stage.flowing .elbl.lit { opacity: 1; fill: var(--clay); }
+  .stage.flowing .node.lit { opacity: 1; }
+  .stage.flowing .node.lit rect { stroke: var(--clay); }
+  @keyframes march { to { stroke-dashoffset: -12; } }
+  @media (prefers-reduced-motion: reduce) { .stage.flowing .edge.lit { animation: none; } }
+
+  .badge { font-family: var(--mono); font-size: 11px; font-weight: 700; }
+  .badge circle { fill: var(--clay); }
+  .badge text { fill: var(--bg); }
+  .stage:not(.flowing) .badge { display: none; }
+
+  .card {
+    position: absolute; max-width: 360px;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 12px;
+    padding: 14px 16px; box-shadow: 0 6px 24px rgba(0,0,0,0.08);
+  }
+  #detail { right: 16px; bottom: 16px; width: 350px; max-height: calc(100% - 40px); overflow-y: auto; }
+  #detail h3 { font-family: var(--serif); font-weight: 500; font-size: 17px; color: var(--ink); margin-bottom: 2px; }
+  #detail .meta { font-family: var(--mono); font-size: 10.5px; color: var(--muted); margin-bottom: 8px; }
+  #detail .df-row { display: flex; gap: 6px; margin-bottom: 5px; font-size: 12px; line-height: 1.5; }
+  #detail .df-label { font-family: var(--mono); font-size: 11px; font-weight: 600; color: var(--clay); flex: none; min-width: 54px; }
+  #detail .df-value { font-family: var(--sans); color: var(--body); flex: 1; }
+  #detail .df-divider { border: none; border-top: 1px solid var(--line-soft); margin: 8px 0; }
+  #detail .df-desc { font-size: 12px; line-height: 1.55; color: var(--muted); }
+  #detail .df-desc code, #flowcap code { font-family: var(--mono); font-size: 11px; color: var(--clay); }
+  #flowcap { left: 16px; bottom: 16px; max-width: 320px; max-height: calc(100% - 40px); overflow-y: auto; display: none; }
+  #flowcap.show { display: block; }
+  #flowcap .fname { font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--clay); margin-bottom: 6px; }
+  #flowcap ol { margin-left: 18px; }
+  #flowcap li { font-size: 12.5px; line-height: 1.55; margin-bottom: 10px; cursor: help; border-radius: 4px; padding: 2px 4px; margin-left: -4px; transition: background .12s ease; }
+  #flowcap li:hover { background: var(--surface2); }
+  .step-json { font-family: var(--mono); font-size: 10.5px; line-height: 1.4; background: var(--surface2); border: 1px solid var(--line-soft); border-radius: 6px; padding: 6px 8px; margin: 4px 0; white-space: pre-wrap; overflow-x: auto; color: var(--body); }
+  .step-tip {
+    position: fixed; z-index: 50; display: none; pointer-events: none; max-width: 360px;
+    font-family: var(--mono); font-size: 10.5px; line-height: 1.4; white-space: pre-wrap; overflow-x: auto;
+    background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+    padding: 8px 10px; box-shadow: 0 10px 30px rgba(0,0,0,0.18); color: var(--body);
+  }
+  .step-tip.show { display: block; }
+  .src { position: absolute; top: 10px; right: 16px; font-family: var(--mono); font-size: 10px; color: var(--muted); opacity: 0.8; }
+  @media (max-width: 880px) {
+    body { overflow: auto; }
+    .stage { min-height: 80vh; }
+    #detail { position: static; width: auto; margin: 10px 16px; }
+    #flowcap { position: static; margin: 0 16px 16px; }
+  }
+</style>
+</head>
+<body>
+
+<div class="bar">
+  <div>
+    <h1>LMS — Kiến trúc hệ thống</h1>
+    <div class="sub">học viên · giảng viên · quản trị viên · phụ huynh · gia sư</div>
+  </div>
+  <div class="spacer"></div>
+  <div class="toolbar-rows">
+    <div class="chips" id="roleChips">
+      <span class="row-label">Vai trò</span>
+      <button class="chip role on" data-role="all">Tất cả</button>
+      <button class="chip role" data-role="student">Học viên</button>
+      <button class="chip role" data-role="teacher">Giảng viên</button>
+      <button class="chip role" data-role="admin">Quản trị viên</button>
+      <button class="chip role" data-role="parent">Phụ huynh</button>
+      <button class="chip role" data-role="tutor">Gia sư</button>
+    </div>
+    <div class="chips" id="chips">
+      <button class="chip on" data-flow="all">Tổng quan</button>
+      <button class="chip" data-flow="enroll">Ghi danh</button>
+      <button class="chip" data-flow="learn">Học tập</button>
+      <button class="chip" data-flow="quiz">Làm bài kiểm tra</button>
+      <button class="chip" data-flow="grade">Chấm điểm</button>
+      <button class="chip" data-flow="course">Tạo khóa học</button>
+      <button class="chip" data-flow="admin">Quản trị</button>
+      <button class="chip" data-flow="aichat">AI Chat</button>
+      <button class="chip" data-flow="analytics">Phân tích</button>
+      <button class="chip" data-flow="tutor">Trợ lý Tutor</button>
+      <button class="chip" data-flow="parent">Trợ lý Parent</button>
+      <button class="chip" data-flow="student-flow">Học viên · tổng quan</button>
+      <button class="chip" data-flow="teacher-flow">Giảng viên · tổng quan</button>
+      <button class="chip" data-flow="admin-flow">Quản trị · tổng quan</button>
+      <button class="chip" data-flow="parent-flow">Phụ huynh · tổng quan</button>
+      <button class="chip" data-flow="tutor-flow">Gia sư · tổng quan</button>
+      <button class="chip" data-flow="finance">Ví &amp; học phí</button>
+    </div>
+  </div>
+  <button id="themeToggle">Theme</button>
+</div>
+
+<div class="stage" id="stage">
+<svg viewBox="0 0 1600 1120" preserveAspectRatio="xMidYMid meet" role="img" aria-label="LMS platform architecture diagram">
+  <defs>
+    <marker id="a-mut" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" style="fill: var(--muted)"/>
+    </marker>
+    <marker id="a-clay" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6.5" markerHeight="6.5" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" style="fill: var(--clay)"/>
+    </marker>
+  </defs>
+
+  <!-- ── zones ─────────────────────────────── -->
+  <g class="zone" id="z-client">
+    <rect x="30" y="100" width="260" height="540"/>
+    <text class="ztitle" x="50" y="128">Người dùng</text>
+    <text class="zsub" x="50" y="148">5 vai trò · một API</text>
+  </g>
+  <g class="zone" id="z-app">
+    <rect x="330" y="40" width="840" height="740"/>
+    <text class="ztitle" x="350" y="68">Features</text>
+    <text class="zsub" x="350" y="88">21 module nghiệp vụ backend thật</text>
+  </g>
+  <g class="zone" id="z-data">
+    <rect x="1200" y="40" width="370" height="370"/>
+    <text class="ztitle" x="1220" y="68">Tầng dữ liệu</text>
+    <text class="zsub" x="1220" y="88">PostgreSQL chung · Redis · Cloudinary</text>
+  </g>
+  <g class="zone" id="z-infra">
+    <rect x="580" y="880" width="540" height="110"/>
+    <text class="ztitle" x="600" y="908">Tích hợp ngoài</text>
+    <text class="zsub" x="600" y="928">Email · Thanh toán</text>
+  </g>
+
+  <!-- ── edges ─────────────────────────────── -->
+  <path class="edge" id="e-student-auth" d="M270,183.5 C 310,183.5 310,142 350,142"/>
+  <path class="edge" id="e-auth-class" d="M442.5,174 C 442.5,242 442.5,242 442.5,310"/>
+  <path class="edge" id="e-class-schedule" d="M535,342 C 542.5,342 542.5,342 550,342"/>
+  <path class="edge" id="e-schedule-tuition" d="M735,342 C 842.5,342 842.5,542 950,542"/>
+  <path class="edge" id="e-tuition-transaction" d="M950,542 C 742.5,542 742.5,642 535,642"/>
+  <path class="edge" id="e-transaction-payment" d="M535,642 C 705,642 705,927.5 875,927.5"/>
+  <path class="edge" id="e-transaction-db-main" d="M535,642 C 877.5,642 877.5,155 1220,155"/>
+  <path class="edge" id="e-transaction-notification" d="M442.5,610 C 442.5,542 442.5,542 442.5,474"/>
+  <path class="edge" id="e-auth-curriculum" d="M535,142 C 542.5,142 542.5,242 550,242"/>
+  <path class="edge" id="e-curriculum-chapter" d="M550,242 C 542.5,242 542.5,242 535,242"/>
+  <path class="edge" id="e-chapter-lesson" d="M535,242 C 642.5,242 642.5,242 750,242"/>
+  <path class="edge" id="e-lesson-cloudinary" d="M935,242 C 942.5,242 942.5,442 950,442"/>
+  <path class="edge" id="e-lesson-ai" d="M842.5,274 C 842.5,342 842.5,342 842.5,410"/>
+  <path class="edge" id="e-auth-exercises" d="M535,142 C 742.5,142 742.5,242 950,242"/>
+  <path class="edge" id="e-exercises-ai" d="M950,242 C 942.5,242 942.5,442 935,442"/>
+  <path class="edge" id="e-exercises-report" d="M1042.5,274 C 1042.5,292 1042.5,292 1042.5,310"/>
+  <path class="edge" id="e-teacher-auth" d="M270,283.5 C 310,283.5 310,142 350,142"/>
+  <path class="edge" id="e-report-notification" d="M950,342 C 742.5,342 742.5,442 535,442"/>
+  <path class="edge" id="e-lesson-uploads" d="M750,242 C 642.5,242 642.5,542 535,542"/>
+  <path class="edge" id="e-uploads-cloudinary" d="M535,542 C 742.5,542 742.5,442 950,442"/>
+  <path class="edge" id="e-admin-auth" d="M270,383.5 C 310,383.5 310,142 350,142"/>
+  <path class="edge" id="e-auth-user" d="M535,142 C 542.5,142 542.5,142 550,142"/>
+  <path class="edge" id="e-user-report" d="M735,142 C 842.5,142 842.5,342 950,342"/>
+  <path class="edge" id="e-auth-category" d="M535,142 C 742.5,142 742.5,142 950,142"/>
+  <path class="edge" id="e-category-class" d="M950,142 C 742.5,142 742.5,342 535,342"/>
+  <path class="edge" id="e-auth-ai" d="M535,142 C 642.5,142 642.5,442 750,442"/>
+  <path class="edge" id="e-ai-db-main" d="M935,442 C 1077.5,442 1077.5,155 1220,155"/>
+  <path class="edge" id="e-parent-role-auth" d="M270,473.5 C 310,473.5 310,142 350,142"/>
+  <path class="edge" id="e-auth-report" d="M535,142 C 742.5,142 742.5,342 950,342"/>
+  <path class="edge" id="e-report-ai" d="M950,342 C 942.5,342 942.5,442 935,442"/>
+  <path class="edge" id="e-ai-notification" d="M750,442 C 642.5,442 642.5,442 535,442"/>
+  <path class="edge" id="e-auth-session" d="M535,142 C 642.5,142 642.5,342 750,342"/>
+  <path class="edge" id="e-session-ai" d="M842.5,374 C 842.5,392 842.5,392 842.5,410"/>
+  <path class="edge" id="e-ai-exercises" d="M935,442 C 942.5,442 942.5,242 950,242"/>
+  <path class="edge" id="e-exercises-notification" d="M950,242 C 742.5,242 742.5,442 535,442"/>
+  <path class="edge" id="e-ai-session" d="M842.5,410 C 842.5,392 842.5,392 842.5,374"/>
+  <path class="edge" id="e-auth-wallet" d="M535,142 C 642.5,142 642.5,542 750,542"/>
+  <path class="edge" id="e-wallet-tuition" d="M935,542 C 942.5,542 942.5,542 950,542"/>
+  <path class="edge" id="e-tutor-role-auth" d="M270,558.5 C 310,558.5 310,142 350,142"/>
+  <path class="edge" id="e-session-report" d="M935,342 C 942.5,342 942.5,342 950,342"/>
+
+  <!-- edge labels -->
+  <text class="elbl" data-e="e-student-auth" x="301.25" y="158.75" text-anchor="middle">đăng nhập</text>
+  <text class="elbl" data-e="e-auth-class" x="442.5" y="238" text-anchor="middle">chọn lớp</text>
+  <text class="elbl" data-e="e-class-schedule" x="542.5" y="338" text-anchor="middle">kiểm tra lịch</text>
+  <text class="elbl" data-e="e-schedule-tuition" x="842.5" y="438" text-anchor="middle">tính học phí</text>
+  <text class="elbl" data-e="e-tuition-transaction" x="742.5" y="588" text-anchor="middle">tạo giao dịch</text>
+  <text class="elbl" data-e="e-transaction-payment" x="713.75" y="780.75" text-anchor="middle">thanh toán</text>
+  <text class="elbl" data-e="e-transaction-db-main" x="918.75" y="394.5" text-anchor="middle">lưu giao dịch</text>
+  <text class="elbl" data-e="e-transaction-notification" x="442.5" y="538" text-anchor="middle">báo kết quả</text>
+  <text class="elbl" data-e="e-auth-curriculum" x="542.5" y="188" text-anchor="middle">vào giáo trình</text>
+  <text class="elbl" data-e="e-curriculum-chapter" x="542.5" y="238" text-anchor="middle">lấy chương</text>
+  <text class="elbl" data-e="e-chapter-lesson" x="642.5" y="238" text-anchor="middle">lấy bài giảng</text>
+  <text class="elbl" data-e="e-lesson-cloudinary" x="942.5" y="338" text-anchor="middle">phát media</text>
+  <text class="elbl" data-e="e-lesson-ai" x="842.5" y="338" text-anchor="middle">tóm tắt bài</text>
+  <text class="elbl" data-e="e-auth-exercises" x="742.5" y="188" text-anchor="middle">vào bài tập</text>
+  <text class="elbl" data-e="e-exercises-ai" x="942.5" y="338" text-anchor="middle">gợi ý AI</text>
+  <text class="elbl" data-e="e-exercises-report" x="1042.5" y="288" text-anchor="middle">tổng hợp điểm</text>
+  <text class="elbl" data-e="e-teacher-auth" x="301.25" y="208.75" text-anchor="middle">đăng nhập</text>
+  <text class="elbl" data-e="e-report-notification" x="742.5" y="388" text-anchor="middle">cảnh báo</text>
+  <text class="elbl" data-e="e-lesson-uploads" x="642.5" y="388" text-anchor="middle">tải file lên</text>
+  <text class="elbl" data-e="e-uploads-cloudinary" x="742.5" y="488" text-anchor="middle">lưu media</text>
+  <text class="elbl" data-e="e-admin-auth" x="301.25" y="258.75" text-anchor="middle">đăng nhập</text>
+  <text class="elbl" data-e="e-auth-user" x="542.5" y="138" text-anchor="middle">quản lý user</text>
+  <text class="elbl" data-e="e-user-report" x="842.5" y="238" text-anchor="middle">báo cáo user</text>
+  <text class="elbl" data-e="e-auth-category" x="742.5" y="138" text-anchor="middle">quản lý danh mục</text>
+  <text class="elbl" data-e="e-category-class" x="742.5" y="238" text-anchor="middle">gán lớp</text>
+  <text class="elbl" data-e="e-auth-ai" x="642.5" y="288" text-anchor="middle">hỏi AI</text>
+  <text class="elbl" data-e="e-ai-db-main" x="1118.75" y="294.5" text-anchor="middle">truy vấn dữ liệu</text>
+  <text class="elbl" data-e="e-parent-role-auth" x="301.25" y="303.75" text-anchor="middle">đăng nhập</text>
+  <text class="elbl" data-e="e-auth-report" x="742.5" y="238" text-anchor="middle">xem báo cáo</text>
+  <text class="elbl" data-e="e-report-ai" x="942.5" y="388" text-anchor="middle">AI giải thích</text>
+  <text class="elbl" data-e="e-auth-session" x="642.5" y="238" text-anchor="middle">vào buổi học</text>
+  <text class="elbl" data-e="e-session-ai" x="842.5" y="388" text-anchor="middle">AI hỗ trợ</text>
+  <text class="elbl" data-e="e-ai-exercises" x="942.5" y="338" text-anchor="middle">sinh bài tập</text>
+  <text class="elbl" data-e="e-exercises-notification" x="742.5" y="338" text-anchor="middle">gửi thông báo</text>
+  <text class="elbl" data-e="e-ai-session" x="842.5" y="388" text-anchor="middle">gợi ý buổi học</text>
+  <text class="elbl" data-e="e-auth-wallet" x="642.5" y="338" text-anchor="middle">mở ví</text>
+  <text class="elbl" data-e="e-wallet-tuition" x="942.5" y="538" text-anchor="middle">đối chiếu học phí</text>
+  <text class="elbl" data-e="e-tutor-role-auth" x="301.25" y="346.25" text-anchor="middle">đăng nhập</text>
+  <text class="elbl" data-e="e-session-report" x="942.5" y="338" text-anchor="middle">báo cáo buổi học</text>
+
+  <!-- ── nodes: clients ────────────────────── -->
+  <g class="node client" data-k="student">
+    <rect x="50" y="146" width="220" height="75"/>
+    <text class="t" x="70" y="172">Học viên</text>
+    <text class="m" x="70" y="194">Web / Mobile · session</text>
+    <text class="k" x="70" y="210">mã SV + mật khẩu</text>
+  </g>
+  <g class="node client" data-k="teacher">
+    <rect x="50" y="246" width="220" height="75"/>
+    <text class="t" x="70" y="272">Giảng viên</text>
+    <text class="m" x="70" y="294">Tạo KH · ra đề · chấm điểm</text>
+    <text class="k" x="70" y="310">email + mật khẩu</text>
+  </g>
+  <g class="node client" data-k="admin">
+    <rect x="50" y="346" width="220" height="75"/>
+    <text class="t" x="70" y="372">Quản trị viên</text>
+    <text class="m" x="70" y="394">Phê duyệt · thống kê · cấu hình</text>
+    <text class="k" x="70" y="410">email + mật khẩu</text>
+  </g>
+  <g class="node client" data-k="parent-role">
+    <rect x="50" y="441" width="220" height="65"/>
+    <text class="t" x="70" y="463">Phụ huynh</text>
+    <text class="m" x="70" y="481">theo dõi · hỗ trợ con</text>
+    <text class="k" x="70" y="497">email + mật khẩu</text>
+  </g>
+  <g class="node client" data-k="tutor-role">
+    <rect x="50" y="526" width="220" height="65"/>
+    <text class="t" x="70" y="548">Gia sư</text>
+    <text class="m" x="70" y="566">kèm 1-1 · báo cáo</text>
+    <text class="k" x="70" y="582">email + mật khẩu</text>
+  </g>
+
+  <!-- ── nodes: features (21 module backend thật) ─── -->
+  <g class="node" data-k="auth">
+    <rect x="350" y="110" width="185" height="64"/>
+    <text class="t" x="366" y="136">Xác thực &amp; Phân quyền</text>
+    <text class="m" x="366" y="156">JWT · RBAC · SSO</text>
+  </g>
+  <g class="node" data-k="user">
+    <rect x="550" y="110" width="185" height="64"/>
+    <text class="t" x="566" y="136">User</text>
+    <text class="m" x="566" y="156">quản lý tài khoản người dùng</text>
+  </g>
+  <g class="node" data-k="student-profile">
+    <rect x="750" y="110" width="185" height="64"/>
+    <text class="t" x="766" y="136">Student</text>
+    <text class="m" x="766" y="156">hồ sơ học viên</text>
+  </g>
+  <g class="node" data-k="category">
+    <rect x="950" y="110" width="185" height="64"/>
+    <text class="t" x="966" y="136">Category</text>
+    <text class="m" x="966" y="156">danh mục khóa học/lớp</text>
+  </g>
+  <g class="node" data-k="chapter">
+    <rect x="350" y="210" width="185" height="64"/>
+    <text class="t" x="366" y="236">Chapter</text>
+    <text class="m" x="366" y="256">chương trong giáo trình</text>
+  </g>
+  <g class="node" data-k="curriculum">
+    <rect x="550" y="210" width="185" height="64"/>
+    <text class="t" x="566" y="236">Curriculum</text>
+    <text class="m" x="566" y="256">giáo trình khóa học</text>
+  </g>
+  <g class="node" data-k="lesson">
+    <rect x="750" y="210" width="185" height="64"/>
+    <text class="t" x="766" y="236">Lesson</text>
+    <text class="m" x="766" y="256">bài giảng, nội dung học</text>
+  </g>
+  <g class="node" data-k="exercises">
+    <rect x="950" y="210" width="185" height="64"/>
+    <text class="t" x="966" y="236">Exercises</text>
+    <text class="m" x="966" y="256">bài tập, đề kiểm tra</text>
+  </g>
+  <g class="node" data-k="class">
+    <rect x="350" y="310" width="185" height="64"/>
+    <text class="t" x="366" y="336">Class</text>
+    <text class="m" x="366" y="356">lớp học, sĩ số</text>
+  </g>
+  <g class="node" data-k="schedule">
+    <rect x="550" y="310" width="185" height="64"/>
+    <text class="t" x="566" y="336">Schedule</text>
+    <text class="m" x="566" y="356">lịch học, lịch dạy</text>
+  </g>
+  <g class="node" data-k="session">
+    <rect x="750" y="310" width="185" height="64"/>
+    <text class="t" x="766" y="336">Session</text>
+    <text class="m" x="766" y="356">buổi học, điểm danh</text>
+  </g>
+  <g class="node" data-k="report">
+    <rect x="950" y="310" width="185" height="64"/>
+    <text class="t" x="966" y="336">Report</text>
+    <text class="m" x="966" y="356">báo cáo, thống kê</text>
+  </g>
+  <g class="node" data-k="notification">
+    <rect x="350" y="410" width="185" height="64"/>
+    <text class="t" x="366" y="436">Notification</text>
+    <text class="m" x="366" y="456">email · push · in-app</text>
+  </g>
+  <g class="node" data-k="email">
+    <rect x="550" y="410" width="185" height="64"/>
+    <text class="t" x="566" y="436">Email</text>
+    <text class="m" x="566" y="456">gửi email hệ thống</text>
+  </g>
+  <g class="node ai" data-k="ai">
+    <rect x="750" y="410" width="185" height="64"/>
+    <text class="t" x="766" y="436">AI</text>
+    <text class="m" x="766" y="456">chat · gợi ý · chấm bài</text>
+  </g>
+  <g class="node" data-k="cloudinary">
+    <rect x="950" y="410" width="185" height="64"/>
+    <text class="t" x="966" y="436">Cloudinary</text>
+    <text class="m" x="966" y="456">lưu trữ media</text>
+  </g>
+  <g class="node" data-k="uploads">
+    <rect x="350" y="510" width="185" height="64"/>
+    <text class="t" x="366" y="536">Uploads</text>
+    <text class="m" x="366" y="556">xử lý file tải lên</text>
+  </g>
+  <g class="node" data-k="redis">
+    <rect x="550" y="510" width="185" height="64"/>
+    <text class="t" x="566" y="536">Redis</text>
+    <text class="m" x="566" y="556">cache · session · queue</text>
+  </g>
+  <g class="node" data-k="wallet">
+    <rect x="750" y="510" width="185" height="64"/>
+    <text class="t" x="766" y="536">Wallet</text>
+    <text class="m" x="766" y="556">ví điện tử người dùng</text>
+  </g>
+  <g class="node" data-k="tuition">
+    <rect x="950" y="510" width="185" height="64"/>
+    <text class="t" x="966" y="536">Tuition</text>
+    <text class="m" x="966" y="556">học phí</text>
+  </g>
+  <g class="node" data-k="transaction">
+    <rect x="350" y="610" width="185" height="64"/>
+    <text class="t" x="366" y="636">Transaction</text>
+    <text class="m" x="366" y="656">giao dịch tài chính</text>
+  </g>
+
+  <!-- ── nodes: data ───────────────────────── -->
+  <g class="node store" data-k="db-main">
+    <rect x="1220" y="110" width="350" height="90"/>
+    <text class="t" x="1240" y="136">PostgreSQL Database</text>
+    <text class="m" x="1240" y="156">mọi module dùng chung schema</text>
+  </g>
+  <g class="node store" data-k="cloudinary-store">
+    <rect x="1220" y="215" width="350" height="90"/>
+    <text class="t" x="1240" y="241">Cloudinary</text>
+    <text class="m" x="1240" y="261">media storage + CDN</text>
+  </g>
+  <g class="node store" data-k="cache">
+    <rect x="1220" y="320" width="350" height="70"/>
+    <text class="t" x="1240" y="346">Redis Store</text>
+    <text class="m" x="1240" y="366">session · rate-limit · queue · hot data</text>
+  </g>
+
+  <!-- ── nodes: infra (external) ───────────── -->
+  <g class="node ext" data-k="email-provider">
+    <rect x="610" y="900" width="220" height="55"/>
+    <text class="t" x="630" y="924">Email Provider</text>
+    <text class="m" x="630" y="943">SendGrid · SES</text>
+  </g>
+  <g class="node ext" data-k="payment">
+    <rect x="875" y="900" width="220" height="55"/>
+    <text class="t" x="895" y="924">Payment Gateway</text>
+    <text class="m" x="895" y="943">VNPay · Stripe · Momo</text>
+  </g>
+
+</svg>
+
+  <div class="card" id="flowcap">
+    <div class="fname" id="f-name"></div>
+    <ol id="f-steps"></ol>
+  </div>
+
+  <div class="card" id="detail">
+    <h3 id="d-title">Nhấp vào một thành phần</h3>
+    <div class="meta" id="d-meta">chi tiết node</div>
+    <p id="d-body">Mỗi ô đều nhấp được. Dùng các chip trên cùng để xem luồng — mỗi vai trò có phương thức đăng nhập riêng (xem dòng cuối mỗi ô vai trò).</p>
+  </div>
+</div>
+
+<div id="stepTip" class="step-tip"></div>
+
+<script>
+const DETAIL = {
+  student: { t:"Học viên", m:"vai trò người dùng", b:"Người học — ghi danh lớp, học bài giảng, làm bài tập, đóng học phí qua ví, chat AI hỏi đáp. Truy cập qua Web hoặc Mobile app." },
+  teacher: { t:"Giảng viên", m:"vai trò người dùng", b:"Người dạy — soạn giáo trình, quản lý buổi học, ra đề, chấm điểm, theo dõi tiến độ học viên, dùng AI hỗ trợ soạn giáo án." },
+  admin: { t:"Quản trị viên", m:"vai trò người dùng", b:"Quản trị hệ thống — quản lý người dùng, danh mục, lớp học, xem báo cáo thống kê, cấu hình hệ thống." },
+  "parent-role": { t:"Phụ huynh", m:"vai trò người dùng", b:"Phụ huynh học sinh — theo dõi điểm số, tiến độ học tập, lịch học của con. Nhận cảnh báo khi con có nguy cơ tụt kết quả." },
+  "tutor-role": { t:"Gia sư", m:"vai trò người dùng", b:"Gia sư kèm 1-1 — điểm danh, dạy kèm, soạn bài tập nhanh, báo cáo tiến độ cho phụ huynh." },
+  auth: { t:"Xác thực & Phân quyền", m:"middleware", b:"JWT-based authentication (access/refresh token). RBAC kiểm soát quyền theo 5 vai trò. Cổng vào bắt buộc trước khi gọi bất kỳ module nghiệp vụ nào." },
+  user: { t:"User", m:"module nghiệp vụ", b:"Quản lý tài khoản người dùng: tạo, sửa, khóa, đổi vai trò, phân quyền." },
+  "student-profile": { t:"Student", m:"module nghiệp vụ", b:"Hồ sơ học viên: thông tin cá nhân, lớp đang học, lịch sử học tập." },
+  category: { t:"Category", m:"module nghiệp vụ", b:"Danh mục khóa học/lớp học, dùng để phân loại và gán lớp." },
+  chapter: { t:"Chapter", m:"module nghiệp vụ", b:"Quản lý chương trong một giáo trình: thứ tự, nội dung tổng quan." },
+  curriculum: { t:"Curriculum", m:"module nghiệp vụ", b:"Giáo trình khóa học — tập hợp các chương và bài giảng." },
+  lesson: { t:"Lesson", m:"module nghiệp vụ", b:"Bài giảng chi tiết: nội dung, video, tài liệu đính kèm." },
+  exercises: { t:"Exercises", m:"module nghiệp vụ", b:"Bài tập, đề kiểm tra: câu hỏi trắc nghiệm/tự luận, nộp bài, chấm điểm." },
+  class: { t:"Class", m:"module nghiệp vụ", b:"Lớp học: sĩ số, giảng viên phụ trách, danh sách học viên." },
+  schedule: { t:"Schedule", m:"module nghiệp vụ", b:"Lịch học/lịch dạy, kiểm tra trùng lịch khi ghi danh." },
+  session: { t:"Session", m:"module nghiệp vụ", b:"Buổi học cụ thể: điểm danh, thời gian, nội dung buổi học." },
+  report: { t:"Report", m:"module nghiệp vụ", b:"Báo cáo, thống kê: điểm số, tiến độ, doanh thu, xếp hạng lớp." },
+  notification: { t:"Notification", m:"module nghiệp vụ", b:"Gửi thông báo đa kênh: email, push, in-app cho các sự kiện hệ thống." },
+  email: { t:"Email", m:"module nghiệp vụ", b:"Soạn nội dung và gửi email hệ thống qua Email Provider (SendGrid/SES)." },
+  ai: { t:"AI", m:"AI service", b:"AI hợp nhất: chat hỏi đáp dữ liệu hệ thống, gợi ý giáo án, sinh bài tập, chấm sơ bộ tự luận, phân tích rủi ro học tập, cảnh báo sớm." },
+  cloudinary: { t:"Cloudinary", m:"module tích hợp", b:"Quản lý media: video bài giảng, ảnh, tài liệu lưu trên Cloudinary + CDN." },
+  uploads: { t:"Uploads", m:"module tích hợp", b:"Xử lý file tải lên (video, tài liệu) trước khi đẩy sang Cloudinary lưu trữ lâu dài." },
+  redis: { t:"Redis", m:"module tích hợp", b:"Tương tác Redis Store: cache dữ liệu nóng, session, hàng đợi tác vụ nền." },
+  wallet: { t:"Wallet", m:"module nghiệp vụ", b:"Ví điện tử người dùng: số dư, nạp tiền, đối chiếu học phí." },
+  tuition: { t:"Tuition", m:"module nghiệp vụ", b:"Học phí: tính toán, hạn đóng, đối chiếu ví và giao dịch." },
+  transaction: { t:"Transaction", m:"module nghiệp vụ", b:"Giao dịch tài chính: tạo lệnh thanh toán/nạp tiền, gọi Payment Gateway, lưu lịch sử giao dịch." },
+  "db-main": { t:"PostgreSQL Database", m:"PostgreSQL", b:"Cơ sở dữ liệu chính — mọi module (user, class, curriculum, exercises, transaction...) dùng chung schema." },
+  "cloudinary-store": { t:"Cloudinary", m:"lưu trữ media + CDN", b:"Lưu trữ video bài giảng, ảnh, tài liệu. CDN phân phối nhanh toàn cầu." },
+  cache: { t:"Redis Store", m:"cache layer", b:"Cache session, rate-limit counters, hot data, job queue — hạ tầng đứng sau module redis." },
+  "email-provider": { t:"Email Provider", m:"hạ tầng", b:"SendGrid / Amazon SES — gửi email thay mặt module email." },
+  payment: { t:"Payment Gateway", m:"hạ tầng", b:"VNPay, Stripe, Momo — xử lý thanh toán cho module transaction/wallet/tuition." },
+};
+
+const FLOWS = {
+  "enroll": {
+    name: "Ghi danh — học viên đăng ký lớp học",
+    edges: ["e-student-auth", "e-auth-class", "e-class-schedule", "e-schedule-tuition", "e-tuition-transaction", "e-transaction-payment", "e-transaction-db-main", "e-transaction-notification"],
+    nodes: ["student", "auth", "class", "schedule", "tuition", "transaction", "payment", "notification", "db-main"],
+    steps: [
+      { t: "Học viên đăng nhập → module auth cấp JWT token",
+        req: {"studentCode": "SV2024001", "password": "•••••"},
+        res: {"accessToken": "eyJ...", "refreshToken": "eyJ...", "user": {"id": "u_101", "role": "student"}} },
+      { t: "Chọn lớp học → module class kiểm tra sĩ số còn trống",
+        req: {"studentId": "u_101", "classId": "cl_14"},
+        res: {"classId": "cl_14", "seatsLeft": 12, "teacherId": "u_20"} },
+      { t: "module schedule xác nhận lịch học không trùng",
+        req: {"studentId": "u_101", "classId": "cl_14"},
+        res: {"scheduled": true, "sessions": [{"id": "ss_9", "at": "2026-07-08T14:00:00Z"}]} },
+      { t: "module tuition tính học phí cần đóng",
+        req: {"studentId": "u_101", "classId": "cl_14"},
+        res: {"tuitionId": "tu_301", "amount": 690000, "dueDate": "2026-07-15"} },
+      { t: "module transaction tạo giao dịch, chuyển Payment Gateway xử lý",
+        req: {"tuitionId": "tu_301", "amount": 690000, "method": "vnpay"},
+        res: {"transactionId": "tx_501", "status": "success"} },
+      { t: "Ghi danh lưu vào PostgreSQL, module notification gửi email xác nhận",
+        res: {"classId": "cl_14", "studentId": "u_101", "status": "enrolled", "notified": true} }
+    ]
+  },
+  "learn": {
+    name: "Học tập — xem bài giảng theo giáo trình",
+    edges: ["e-student-auth", "e-auth-curriculum", "e-curriculum-chapter", "e-chapter-lesson", "e-lesson-cloudinary", "e-lesson-ai"],
+    nodes: ["student", "auth", "curriculum", "chapter", "lesson", "cloudinary", "ai"],
+    steps: [
+      { t: "Học viên đăng nhập → xác thực qua module auth",
+        req: {"studentCode": "SV2024001", "password": "•••••"},
+        res: {"accessToken": "eyJ...", "user": {"id": "u_101", "role": "student"}} },
+      { t: "Vào lớp học → module curriculum load giáo trình",
+        req: {"studentId": "u_101", "classId": "cl_14"},
+        res: {"curriculumId": "cu_5", "title": "Toán 10 nâng cao"} },
+      { t: "module chapter trả danh sách chương",
+        req: {"curriculumId": "cu_5"},
+        res: {"chapters": [{"id": "ch_1", "title": "Hàm số"}]} },
+      { t: "module lesson trả nội dung bài giảng của chương",
+        req: {"chapterId": "ch_1"},
+        res: {"lessons": [{"id": "l_1", "title": "Bài 1: Hàm số bậc nhất", "videoPublicId": "lessons/l_1"}]} },
+      { t: "Video/tài liệu phục vụ trực tiếp từ Cloudinary",
+        req: {"lessonId": "l_1"},
+        res: {"cloudinaryUrl": "https://res.cloudinary.com/.../l_1.mp4", "durationSec": 640} },
+      { t: "module ai tóm tắt bài giảng, gợi ý ôn tập",
+        req: {"studentId": "u_101", "lessonId": "l_1", "watchedSec": 640},
+        res: {"summary": "Ôn khái niệm hàm số bậc nhất, 3 ví dụ minh họa."} }
+    ]
+  },
+  "quiz": {
+    name: "Làm bài tập — trắc nghiệm & tự luận",
+    edges: ["e-student-auth", "e-auth-exercises", "e-exercises-ai", "e-exercises-report"],
+    nodes: ["student", "auth", "exercises", "ai", "report", "db-main"],
+    steps: [
+      { t: "Học viên đăng nhập, vào bài tập → module exercises trả đề",
+        req: {"exerciseId": "ex_55", "studentId": "u_101"},
+        res: {"questions": [{"id": "qs_1", "type": "mcq"}, {"id": "qs_2", "type": "essay"}]} },
+      { t: "module ai hỗ trợ sinh thêm câu hỏi theo độ khó",
+        req: {"subject": "toan", "grade": 10, "difficulty": "medium", "count": 10},
+        res: {"exerciseId": "ex_55", "generatedQuestions": 10} },
+      { t: "Nộp bài → module exercises lưu bài làm",
+        req: {"exerciseId": "ex_55", "studentId": "u_101", "answers": [{"questionId": "qs_1", "value": "B"}]},
+        res: {"submissionId": "sb_777", "submittedAt": "2026-07-08T10:00:00Z"} },
+      { t: "Trắc nghiệm chấm tự động, tự luận module ai chấm sơ bộ",
+        req: {"submissionId": "sb_777", "questionId": "qs_2", "answerText": "..."},
+        res: {"mcqScore": 8, "suggestedEssayScore": 7.5, "feedback": "Lập luận đúng hướng, thiếu bước rút gọn."} },
+      { t: "module report tổng hợp điểm, xếp hạng lớp",
+        req: {"submissionId": "sb_777"},
+        res: {"finalScore": 8.2, "grade": "B+", "classRank": 4} },
+      { t: "Kết quả lưu PostgreSQL, học viên nhận thông báo",
+        res: {"notified": true} }
+    ]
+  },
+  "grade": {
+    name: "Chấm điểm — giảng viên chấm bài tập",
+    edges: ["e-teacher-auth", "e-auth-exercises", "e-exercises-ai", "e-exercises-report", "e-report-notification"],
+    nodes: ["teacher", "auth", "exercises", "ai", "report", "notification", "db-main"],
+    steps: [
+      { t: "Giảng viên đăng nhập → vào mục chấm bài",
+        req: {"email": "teacher@tutorpro.vn", "password": "•••••"},
+        res: {"accessToken": "eyJ...", "user": {"id": "u_20", "role": "teacher"}} },
+      { t: "Xem danh sách bài nộp trong lớp qua module exercises",
+        req: {"classId": "cl_14"},
+        res: {"submissions": [{"id": "sb_777", "studentId": "u_101", "status": "pending_review"}]} },
+      { t: "Bài tự luận: module ai gợi ý điểm + feedback theo rubric",
+        req: {"submissionId": "sb_777"},
+        res: {"suggestedScore": 7.5, "rubricBreakdown": [{"criterion": "lập luận", "score": 4, "max": 5}]} },
+      { t: "Giảng viên nhập điểm chính thức",
+        req: {"submissionId": "sb_777", "score": 8.2, "comment": "Tốt, cần chặt chẽ hơn ở bước 2"},
+        res: {"submissionId": "sb_777", "status": "graded"} },
+      { t: "module report công bố điểm, cập nhật thống kê lớp",
+        req: {"classId": "cl_14"},
+        res: {"published": true, "classAvg": 7.6} },
+      { t: "module notification báo điểm cho học viên",
+        res: {"notifiedStudents": 32} }
+    ]
+  },
+  "course": {
+    name: "Soạn giáo trình — giảng viên xây dựng nội dung",
+    edges: ["e-teacher-auth", "e-auth-curriculum", "e-curriculum-chapter", "e-chapter-lesson", "e-lesson-uploads", "e-uploads-cloudinary", "e-lesson-ai"],
+    nodes: ["teacher", "auth", "curriculum", "chapter", "lesson", "uploads", "cloudinary", "ai"],
+    steps: [
+      { t: "Giảng viên đăng nhập → tạo giáo trình mới",
+        req: {"email": "teacher@tutorpro.vn", "password": "•••••"},
+        res: {"accessToken": "eyJ...", "user": {"id": "u_20", "role": "teacher"}} },
+      { t: "module curriculum tạo giáo trình, module chapter thêm chương",
+        req: {"title": "Toán 10 nâng cao", "chapters": [{"title": "Hàm số"}]},
+        res: {"curriculumId": "cu_5", "chapterIds": ["ch_1"]} },
+      { t: "module lesson soạn nội dung bài giảng cho từng chương",
+        req: {"chapterId": "ch_1", "title": "Bài 1: Hàm số bậc nhất", "content": "<p>...</p>"},
+        res: {"lessonId": "l_1", "status": "draft"} },
+      { t: "module uploads xử lý file video tải lên",
+        req: {"lessonId": "l_1", "file": "lesson1.mp4"},
+        res: {"uploadId": "up_9", "tempPath": "/tmp/up_9.mp4"} },
+      { t: "Đẩy lên Cloudinary lưu trữ lâu dài + CDN",
+        req: {"uploadId": "up_9"},
+        res: {"cloudinaryPublicId": "lessons/l_1", "cloudinaryUrl": "https://res.cloudinary.com/.../l_1.mp4"} },
+      { t: "module ai gợi ý câu hỏi ôn tập từ nội dung bài giảng",
+        req: {"lessonId": "l_1"},
+        res: {"suggestedQuestions": [{"type": "mcq", "content": "..."}]} }
+    ]
+  },
+  "admin": {
+    name: "Quản trị — vận hành hệ thống",
+    edges: ["e-admin-auth", "e-auth-user", "e-user-report", "e-auth-category", "e-category-class"],
+    nodes: ["admin", "auth", "user", "report", "category", "class", "db-main"],
+    steps: [
+      { t: "Admin đăng nhập → vào Dashboard quản trị",
+        req: {"email": "admin@tutorpro.vn", "password": "•••••"},
+        res: {"accessToken": "eyJ...", "user": {"id": "u_1", "role": "admin"}} },
+      { t: "module user quản lý tài khoản: tạo/sửa/khóa, phân quyền",
+        req: {"action": "update", "userId": "u_20", "role": "teacher", "status": "active"},
+        res: {"userId": "u_20", "status": "updated"} },
+      { t: "module category quản lý danh mục môn học/lớp",
+        req: {"name": "Toán học", "slug": "toan-hoc"},
+        res: {"categoryId": "cat_3"} },
+      { t: "module class gán lớp học vào danh mục",
+        req: {"classId": "cl_14", "categoryId": "cat_3"},
+        res: {"classId": "cl_14", "updated": true} },
+      { t: "module report xem thống kê: doanh thu, học viên, lớp hot",
+        req: {"range": "30d"},
+        res: {"revenue": 128000000, "activeStudents": 940, "topClasses": ["cl_14"]} },
+      { t: "Cấu hình hệ thống: payment, email, rate-limit",
+        req: {"key": "rate_limit_per_min", "value": 120},
+        res: {"updated": true} }
+    ]
+  },
+  "aichat": {
+    name: "AI Chat — hỏi đáp dữ liệu hệ thống",
+    edges: ["e-student-auth", "e-teacher-auth", "e-auth-ai", "e-ai-db-main"],
+    nodes: ["student", "teacher", "auth", "ai", "db-main"],
+    steps: [
+      { t: "Người dùng đăng nhập → mở AI Chat",
+        req: {"identifier": "SV2024001 hoặc email", "password": "•••••"},
+        res: {"accessToken": "eyJ...", "user": {"id": "u_101", "role": "student"}} },
+      { t: "Hỏi bằng ngôn ngữ tự nhiên về lớp học, điểm, học phí",
+        req: {"userId": "u_101", "query": "Tuần này tôi có buổi học nào không?"},
+        res: {"intent": "query_schedule"} },
+      { t: "module ai truy vấn PostgreSQL theo intent",
+        req: {"intent": "query_schedule", "filters": {"studentId": "u_101", "range": "7d"}},
+        res: {"records": [{"classId": "cl_14", "title": "Toán 10", "nextSessionAt": "2026-07-11T00:00:00Z"}]} },
+      { t: "Phản hồi chính xác dựa trên ngữ cảnh người dùng",
+        res: {"answer": "Bạn có buổi học Toán 10 vào 11/07.", "sources": ["cl_14"]} },
+      { t: "Áp dụng cho mọi vai trò: học viên, giảng viên, phụ huynh, gia sư",
+        res: {"rolesSupported": ["student", "teacher", "parent", "tutor"]} }
+    ]
+  },
+  "analytics": {
+    name: "Phân tích & Cảnh báo — tiến độ học tập",
+    edges: ["e-teacher-auth", "e-parent-role-auth", "e-auth-report", "e-report-ai", "e-ai-notification"],
+    nodes: ["teacher", "parent-role", "auth", "report", "ai", "notification", "db-main"],
+    steps: [
+      { t: "module report tổng hợp dữ liệu điểm, tiến độ",
+        req: {"classId": "cl_14", "range": "30d"},
+        res: {"trend": "declining", "studentsAnalyzed": 32} },
+      { t: "module ai phát hiện học sinh có nguy cơ tụt kết quả",
+        res: {"atRiskStudents": [{"studentId": "u_101", "riskScore": 0.78, "reason": "điểm giảm 3 kỳ liên tiếp"}]} },
+      { t: "module notification gửi cảnh báo sớm cho giảng viên và phụ huynh",
+        req: {"studentId": "u_101", "recipients": ["teacher", "parent"]},
+        res: {"alertId": "al_9", "sentAt": "2026-07-08T07:00:00Z"} },
+      { t: "Phụ huynh xem giải thích chi tiết từ module ai",
+        req: {"childId": "u_101"},
+        res: {"explanation": "Điểm giảm chủ yếu do phần hình học, cần ôn thêm."} },
+      { t: "Giảng viên can thiệp kịp thời với học sinh yếu",
+        req: {"studentId": "u_101", "action": "schedule_extra_session"},
+        res: {"status": "scheduled"} }
+    ]
+  },
+  "tutor": {
+    name: "Trợ lý Tutor — soạn buổi học, tạo bài tập",
+    edges: ["e-teacher-auth", "e-auth-session", "e-session-ai", "e-ai-exercises", "e-exercises-notification"],
+    nodes: ["teacher", "auth", "session", "ai", "exercises", "notification"],
+    steps: [
+      { t: "Giảng viên/gia sư vào module session chuẩn bị buổi học",
+        req: {"userId": "u_20", "classId": "cl_14"},
+        res: {"sessionId": "ss_9"} },
+      { t: "module ai gợi ý giáo án dựa trên chủ đề buổi học",
+        req: {"sessionId": "ss_9", "topic": "Hàm số bậc hai"},
+        res: {"lessonPlan": {"outline": ["mở bài", "lý thuyết", "bài tập"], "durationMin": 45}} },
+      { t: "module ai tạo nhanh bài tập cho buổi học",
+        req: {"topic": "Hàm số bậc hai", "difficulty": "medium", "count": 5},
+        res: {"exerciseId": "ex_56", "questions": 5} },
+      { t: "module exercises lưu bài tập, gán vào lớp",
+        req: {"exerciseId": "ex_56", "classId": "cl_14"},
+        res: {"assigned": true} },
+      { t: "module notification báo học viên có bài tập mới",
+        req: {"classId": "cl_14", "message": "Buổi học mới đã có bài tập, xem ngay!"},
+        res: {"notificationId": "no_901"} }
+    ]
+  },
+  "parent": {
+    name: "Trợ lý Parent — giải thích điểm, tiến độ",
+    edges: ["e-parent-role-auth", "e-auth-report", "e-report-ai", "e-ai-session"],
+    nodes: ["parent-role", "auth", "report", "ai", "session"],
+    steps: [
+      { t: "Phụ huynh đăng nhập → xem báo cáo của con",
+        req: {"email": "parent@tutorpro.vn", "password": "•••••"},
+        res: {"accessToken": "eyJ...", "user": {"id": "u_40", "role": "parent", "children": ["u_101"]}} },
+      { t: "module report trả điểm số, tiến độ học tập",
+        req: {"childId": "u_101"},
+        res: {"grades": [{"classId": "cl_14", "avgScore": 8.2}], "progress": 0.62} },
+      { t: "module ai giải thích kết quả bằng ngôn ngữ dễ hiểu",
+        req: {"childId": "u_101", "period": "30d"},
+        res: {"explanation": "Con tiến bộ ở phần đại số, cần ôn thêm hình học."} },
+      { t: "module session cho xem lịch sử các buổi học đã tham gia",
+        req: {"childId": "u_101"},
+        res: {"sessions": [{"id": "ss_9", "at": "2026-07-08T14:00:00Z", "attended": true}]} },
+      { t: "Nhận cảnh báo nếu con có nguy cơ tụt kết quả",
+        res: {"alertReceived": true, "riskScore": 0.78} }
+    ]
+  },
+  "finance": {
+    name: "Ví & Học phí — thanh toán, giao dịch",
+    edges: ["e-student-auth", "e-parent-role-auth", "e-auth-wallet", "e-wallet-tuition", "e-tuition-transaction", "e-transaction-payment", "e-transaction-notification", "e-transaction-db-main"],
+    nodes: ["student", "parent-role", "auth", "wallet", "tuition", "transaction", "payment", "notification", "db-main"],
+    steps: [
+      { t: "Đăng nhập → module wallet trả số dư ví hiện tại",
+        req: {"userId": "u_101"},
+        res: {"walletId": "w_10", "balance": 250000} },
+      { t: "module tuition liệt kê học phí cần đóng, đối chiếu ví",
+        req: {"studentId": "u_101"},
+        res: {"tuitions": [{"id": "tu_301", "classId": "cl_14", "amount": 690000, "dueDate": "2026-07-15"}]} },
+      { t: "Không đủ số dư → module transaction tạo lệnh nạp thêm",
+        req: {"walletId": "w_10", "amount": 440000, "method": "vnpay"},
+        res: {"transactionId": "tx_502", "type": "topup", "status": "pending"} },
+      { t: "Payment Gateway xác nhận thanh toán thành công",
+        req: {"transactionId": "tx_502"},
+        res: {"status": "success", "paidAt": "2026-07-08T09:10:00Z"} },
+      { t: "module transaction trừ ví, thanh toán học phí, lưu PostgreSQL",
+        res: {"transactionId": "tx_503", "tuitionId": "tu_301", "walletBalance": 0, "status": "completed"} },
+      { t: "module notification gửi biên nhận qua email",
+        res: {"notified": true} }
+    ]
+  },
+  "student-flow": {
+    name: "Học viên — hành trình từ A đến Z",
+    edges: ["e-student-auth", "e-auth-class", "e-class-schedule", "e-auth-curriculum", "e-curriculum-chapter", "e-chapter-lesson", "e-lesson-cloudinary", "e-lesson-ai", "e-auth-exercises", "e-exercises-ai", "e-exercises-report", "e-auth-wallet", "e-wallet-tuition"],
+    nodes: ["student", "auth", "class", "schedule", "curriculum", "chapter", "lesson", "cloudinary", "ai", "exercises", "report", "wallet", "tuition", "db-main"],
+    steps: [
+      { t: "Đăng nhập → ghi danh lớp học, kiểm tra lịch",
+        req: {"studentCode": "SV2024001", "password": "•••••"},
+        res: {"accessToken": "eyJ...", "classId": "cl_14"} },
+      { t: "Đóng học phí qua module wallet/tuition/transaction",
+        req: {"tuitionId": "tu_301", "amount": 690000},
+        res: {"transactionId": "tx_501", "status": "success"} },
+      { t: "Học bài giảng: curriculum → chapter → lesson → Cloudinary",
+        req: {"classId": "cl_14"},
+        res: {"lessons": [{"id": "l_1", "cloudinaryUrl": "https://res.cloudinary.com/.../l_1.mp4"}]} },
+      { t: "AI tóm tắt bài giảng, gợi ý ôn tập",
+        req: {"studentId": "u_101", "lessonId": "l_1"},
+        res: {"summary": "..."} },
+      { t: "Làm bài tập, AI hỗ trợ và chấm sơ bộ",
+        req: {"exerciseId": "ex_55", "answers": []},
+        res: {"submissionId": "sb_777", "finalScore": 8.2} },
+      { t: "Xem điểm, thống kê cá nhân qua module report",
+        req: {"studentId": "u_101"},
+        res: {"avgScore": 8.2, "classRank": 4} }
+    ]
+  },
+  "teacher-flow": {
+    name: "Giảng viên — hành trình từ soạn bài đến chấm điểm",
+    edges: ["e-teacher-auth", "e-auth-curriculum", "e-curriculum-chapter", "e-chapter-lesson", "e-lesson-uploads", "e-uploads-cloudinary", "e-auth-session", "e-session-ai", "e-ai-exercises", "e-exercises-report", "e-report-notification"],
+    nodes: ["teacher", "auth", "curriculum", "chapter", "lesson", "uploads", "cloudinary", "session", "ai", "exercises", "report", "notification", "db-main"],
+    steps: [
+      { t: "Giảng viên đăng nhập → module auth cấp JWT token",
+        req: {"email": "teacher@tutorpro.vn", "password": "•••••"},
+        res: {"accessToken": "eyJ...", "user": {"id": "u_20", "role": "teacher"}} },
+      { t: "Soạn giáo trình: curriculum/chapter/lesson, upload media lên Cloudinary",
+        req: {"title": "Toán 10 nâng cao", "chapters": [{"title": "Hàm số"}]},
+        res: {"curriculumId": "cu_5", "cloudinaryUrl": "https://res.cloudinary.com/.../l_1.mp4"} },
+      { t: "Chuẩn bị buổi học qua module session, AI gợi ý giáo án + bài tập",
+        req: {"sessionId": "ss_9", "topic": "Hàm số bậc hai"},
+        res: {"lessonPlan": {"outline": ["mở bài", "lý thuyết", "bài tập"]}, "exerciseId": "ex_56"} },
+      { t: "Chấm điểm bài nộp: module exercises + AI gợi ý điểm tự luận",
+        req: {"submissionId": "sb_777", "score": 8.2},
+        res: {"updated": true, "studentNotified": true} },
+      { t: "Xem thống kê lớp và cảnh báo học sinh yếu từ module report",
+        req: {"classId": "cl_14"},
+        res: {"atRiskStudents": [{"studentId": "u_101", "riskScore": 0.78}]} }
+    ]
+  },
+  "admin-flow": {
+    name: "Quản trị viên — hành trình vận hành hệ thống",
+    edges: ["e-admin-auth", "e-auth-user", "e-user-report", "e-auth-category", "e-category-class"],
+    nodes: ["admin", "auth", "user", "report", "category", "class", "db-main"],
+    steps: [
+      { t: "Admin đăng nhập → Dashboard quản trị",
+        req: {"email": "admin@tutorpro.vn", "password": "•••••"},
+        res: {"accessToken": "eyJ...", "user": {"id": "u_1", "role": "admin"}} },
+      { t: "module user: tạo, sửa, khóa tài khoản, phân quyền theo vai trò",
+        req: {"action": "disable", "userId": "u_55", "reason": "vi phạm quy định"},
+        res: {"userId": "u_55", "status": "disabled"} },
+      { t: "module category/class: quản lý danh mục và lớp học",
+        req: {"classId": "cl_14", "categoryId": "cat_3"},
+        res: {"updated": true} },
+      { t: "module report: doanh thu, học viên hoạt động, lớp nổi bật",
+        req: {"range": "30d"},
+        res: {"revenue": 128000000, "activeStudents": 940, "topClasses": ["cl_14"]} },
+      { t: "Cấu hình hệ thống: payment gateway, email provider, rate-limit",
+        req: {"key": "payment_provider", "value": "vnpay"},
+        res: {"updated": true} }
+    ]
+  },
+  "parent-flow": {
+    name: "Phụ huynh — theo dõi con học tập",
+    edges: ["e-parent-role-auth", "e-auth-report", "e-report-ai", "e-ai-session"],
+    nodes: ["parent-role", "auth", "report", "ai", "session", "notification"],
+    steps: [
+      { t: "Phụ huynh đăng nhập → dashboard con",
+        req: {"email": "parent@tutorpro.vn", "password": "•••••"},
+        res: {"accessToken": "eyJ...", "children": ["u_101"]} },
+      { t: "module report: điểm số, tiến độ, lịch học của con",
+        req: {"childId": "u_101"},
+        res: {"grades": [{"classId": "cl_14", "avgScore": 8.2}], "nextSessionAt": "2026-07-11"} },
+      { t: "module ai giải thích kết quả bằng ngôn ngữ dễ hiểu",
+        req: {"childId": "u_101"},
+        res: {"explanation": "..."} },
+      { t: "module session: xem lịch sử buổi học đã tham gia",
+        req: {"childId": "u_101"},
+        res: {"sessions": [{"id": "ss_9", "attended": true}]} },
+      { t: "Nhận cảnh báo nếu con có nguy cơ tụt kết quả",
+        res: {"alertReceived": true, "riskScore": 0.78} }
+    ]
+  },
+  "tutor-flow": {
+    name: "Gia sư — kèm cặp & báo cáo",
+    edges: ["e-tutor-role-auth", "e-auth-session", "e-session-ai", "e-ai-exercises", "e-exercises-notification", "e-session-report"],
+    nodes: ["tutor-role", "auth", "session", "ai", "exercises", "notification", "report"],
+    steps: [
+      { t: "Gia sư đăng nhập → xem lịch dạy qua module session",
+        req: {"email": "tutor@tutorpro.vn", "password": "•••••"},
+        res: {"accessToken": "eyJ...", "sessions": [{"id": "ss_9", "at": "2026-07-08T14:00:00Z"}]} },
+      { t: "module session ghi nhận điểm danh buổi học",
+        req: {"sessionId": "ss_9", "presentStudentIds": ["u_101"]},
+        res: {"recordedAt": "2026-07-08T14:05:00Z"} },
+      { t: "module ai soạn giáo án và tạo bài tập nhanh cho buổi kèm",
+        req: {"topic": "Hàm số bậc hai", "count": 5},
+        res: {"lessonPlan": {"outline": ["ôn bài cũ", "bài mới", "luyện tập"]}, "exerciseId": "ex_57"} },
+      { t: "module exercises lưu bài tập, module notification báo học viên",
+        req: {"exerciseId": "ex_57", "classId": "cl_14"},
+        res: {"notificationId": "no_902"} },
+      { t: "module report tổng hợp tiến độ, gửi báo cáo cho phụ huynh",
+        req: {"studentId": "u_101", "parentId": "u_40"},
+        res: {"reportId": "rp_3", "sentAt": "2026-07-08T15:00:00Z"} }
+    ]
+  }
+};
+
+const ROLE_FLOWS = {
+  all:     null,
+  student: ["student-flow","enroll","learn","quiz","grade","aichat","finance"],
+  teacher: ["teacher-flow","course","tutor","grade","aichat","analytics"],
+  admin:   ["admin-flow","admin","aichat"],
+  parent:  ["parent-flow","parent","analytics","finance"],
+  tutor:   ["tutor-flow","tutor"],
+};
+
+const stage = document.getElementById('stage');
+const nodes = document.querySelectorAll('.node');
+const edges = document.querySelectorAll('.edge');
+const elbls = document.querySelectorAll('.elbl');
+const chips = document.querySelectorAll('#chips .chip');
+const roleChips = document.querySelectorAll('#roleChips .chip');
+const fcap = document.getElementById('flowcap');
+const stepTip = document.getElementById('stepTip');
+const fsteps = document.getElementById('f-steps');
+let currentFlow = null;
+
+function esc(s) {
+  return String(s).replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
+}
+
+function setFlow(key) {
+  chips.forEach(c => c.classList.toggle('on', c.dataset.flow === key));
+  edges.forEach(e => e.classList.remove('lit'));
+  elbls.forEach(l => l.classList.remove('lit'));
+  nodes.forEach(n => n.classList.remove('lit'));
+  stepTip.classList.remove('show');
+  if (key === 'all') { stage.classList.remove('flowing'); fcap.classList.remove('show'); currentFlow = null; return; }
+  const f = FLOWS[key];
+  currentFlow = f;
+  stage.classList.add('flowing');
+  f.edges.forEach(id => document.getElementById(id)?.classList.add('lit'));
+  elbls.forEach(l => { if (f.edges.includes(l.dataset.e)) l.classList.add('lit'); });
+  f.nodes.forEach(k => document.querySelector(`.node[data-k="${k}"]`)?.classList.add('lit'));
+  document.getElementById('f-name').textContent = f.name;
+  fsteps.innerHTML = f.steps.map((s, i) => `
+    <li data-idx="${i}">
+      <div class="step-t">${esc(s.t)}</div>
+    </li>`).join('');
+  fcap.classList.add('show');
+}
+chips.forEach(c => c.addEventListener('click', () => setFlow(c.dataset.flow)));
+
+function tipContent(s) {
+  let out = '';
+  if (s.req) out += `// request\n${JSON.stringify(s.req, null, 2)}`;
+  if (s.res) out += `${out ? '\n\n' : ''}// response\n${JSON.stringify(s.res, null, 2)}`;
+  return out || '(không có payload)';
+}
+
+function positionTip(evt) {
+  const pad = 14, margin = 8;
+  const rect = stepTip.getBoundingClientRect();
+  let left = evt.clientX + pad;
+  let top = evt.clientY + pad;
+  if (left + rect.width + margin > window.innerWidth) left = evt.clientX - rect.width - pad;
+  if (top + rect.height + margin > window.innerHeight) top = evt.clientY - rect.height - pad;
+  stepTip.style.left = Math.max(margin, left) + 'px';
+  stepTip.style.top = Math.max(margin, top) + 'px';
+}
+
+fsteps.addEventListener('mouseenter', evt => {
+  const li = evt.target.closest('li[data-idx]');
+  if (!li || !currentFlow) return;
+  const s = currentFlow.steps[Number(li.dataset.idx)];
+  if (!s) return;
+  stepTip.textContent = tipContent(s);
+  stepTip.classList.add('show');
+  positionTip(evt);
+}, true);
+fsteps.addEventListener('mousemove', evt => {
+  const li = evt.target.closest('li[data-idx]');
+  if (!li || !stepTip.classList.contains('show')) return;
+  positionTip(evt);
+});
+fsteps.addEventListener('mouseleave', evt => {
+  const li = evt.target.closest('li[data-idx]');
+  if (!li) return;
+  stepTip.classList.remove('show');
+}, true);
+
+function setRole(role) {
+  roleChips.forEach(c => c.classList.toggle('on', c.dataset.role === role));
+  const allowed = ROLE_FLOWS[role];
+  chips.forEach(c => {
+    const flow = c.dataset.flow;
+    c.style.display = (!allowed || flow === 'all' || allowed.includes(flow)) ? '' : 'none';
+  });
+  setFlow(allowed ? allowed[0] : 'all');
+}
+roleChips.forEach(c => c.addEventListener('click', () => setRole(c.dataset.role)));
+
+nodes.forEach(n => n.addEventListener('click', () => {
+  nodes.forEach(x => x.classList.remove('sel'));
+  n.classList.add('sel');
+  const d = DETAIL[n.dataset.k];
+  if (!d) return;
+  document.getElementById('d-title').textContent = d.t;
+  document.getElementById('d-meta').textContent = d.m;
+  document.getElementById('d-body').innerHTML = d.b;
+}));
+
+document.getElementById('themeToggle').addEventListener('click', () => {
+  const dark = !document.documentElement.classList.contains('dark');
+  document.documentElement.classList.toggle('dark', dark);
+  localStorage.setItem('theme', dark ? 'dark' : 'light');
+});
+</script>
+</body>
+</html>

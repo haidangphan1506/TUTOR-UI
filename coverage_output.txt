@@ -1,0 +1,16 @@
+﻿
+ RUN  v4.1.6 D:/my-finance-tracker
+
+bun : Not implemented: navigation to another Document
+At line:1 char:1
++ bun x vitest run -- --coverage 2>&1 | Out-File -FilePath coverage_out ...
++ ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    + CategoryInfo          : NotSpecified: (Not implemented...nother Document:String) [], RemoteException
+    + FullyQualifiedErrorId : NativeCommandError
+ 
+
+ Test Files  53 passed | 6 skipped (59)
+      Tests  722 passed | 6 todo (728)
+   Start at  10:39:32
+   Duration  16.28s (transform 9.39s, setup 10.70s, import 40.77s, tests 52.40s, environment 73.13s)
+
