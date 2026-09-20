@@ -712,7 +712,7 @@ export const DiscussionsPage = () => {
                   </button>
                 </div>
               </div>
-              {typingUsers.has(activeId) && (
+              {activeId && typingUsers.has(activeId) && (
                 <p className="mt-1.5 text-center text-[11px] text-primary">
                   Đang nhập...
                 </p>

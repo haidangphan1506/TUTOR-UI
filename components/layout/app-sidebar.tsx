@@ -18,6 +18,7 @@ import {
   MessageSquare,
   Settings,
   Sparkles,
+  GitBranch,
 } from "lucide-react";
 
 import { SidebarProvider } from "@/components/ui/sidebar.ui";
@@ -56,6 +57,7 @@ const NAV = {
   aiChat: { key: "aiChat", url: "/ai-chat", icon: Sparkles },
   users: { key: "users", url: "/users", icon: UserCog },
   reports: { key: "reports", url: "/reports", icon: BarChart3 },
+  flowRequests: { key: "flowRequests", url: "/flow-requests", icon: GitBranch },
 } satisfies Record<string, NavItem>;
 
 /**
@@ -78,7 +80,7 @@ const roleNav: Record<UserRole, NavItem[]> = {
   ],
   // Admin — trimmed menu: Overview, Tutors, Students.
   // (Settings is appended for every role via `navSettings`.)
-  ADMIN: [NAV.overview, NAV.tutors, NAV.students],
+  ADMIN: [NAV.overview, NAV.tutors, NAV.students, NAV.flowRequests],
   // Student — no "Students"; "Tuition" is view-only.
   STUDENT: [
     NAV.overview,

@@ -33,6 +33,7 @@ export type AppShellDictionary = {
     users: string;
     reports: string;
     settings: string;
+    flowRequests: string;
     curriculumOfChild: string;
     gradesOfChild: string;
   };
@@ -97,6 +98,7 @@ const vi: AppShellDictionary = {
     users: "Người dùng",
     reports: "Báo cáo học tập",
     settings: "Cài đặt",
+    flowRequests: "Flow Requests",
     curriculumOfChild: "Chương trình của con",
     gradesOfChild: "Điểm số của con",
   },
@@ -161,6 +163,7 @@ const en: AppShellDictionary = {
     users: "Users",
     reports: "Progress Reports",
     settings: "Settings",
+    flowRequests: "Flow Requests",
     curriculumOfChild: "Child's Curriculum",
     gradesOfChild: "Child's Grades",
   },
